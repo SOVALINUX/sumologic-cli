@@ -93,12 +93,12 @@ cli-anything-sumologic auth test
 
 | Flag | Description |
 |------|-------------|
-| *(no flag)* | **TOON** — compact JSON with truncation (default, token-efficient) |
+| *(no flag)* | **TOON** — Token-Oriented Object Notation (default, token-efficient) |
 | `--format toon` | Same as default |
-| `--format json` | Full indented JSON, no truncation |
+| `--format json` | Full indented JSON |
 | `--format text` | Human-readable tables (always used inside the REPL) |
 
-TOON truncation limits: strings > 500 chars, lists > 20 items, dicts > 30 fields.  
+TOON uses YAML-like key-value pairs for objects and tabular CSV rows for uniform arrays (field names declared once per array). Field truncation is applied before encoding: strings > 500 chars, lists > 20 items, dicts > 30 fields.  
 `--json` is a hidden alias for `--format json` kept for backward compatibility.
 
 ## Agent Usage (TOON mode — default)

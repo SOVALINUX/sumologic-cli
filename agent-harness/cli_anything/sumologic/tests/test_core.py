@@ -345,62 +345,100 @@ class TestFormatter:
         d = fmt.record_to_dict(rec)
         assert d["_count"] == "5"
 
+    # ── deep_truncate tests ───────────────────────────────────────────
+
     def test_deep_truncate_short_string_unchanged(self):
-        assert fmt._deep_truncate("hello", max_str=10) == "hello"
+        assert fmt.deep_truncate("hello", max_str=10) == "hello"
 
     def test_deep_truncate_long_string(self):
         long_s = "x" * 600
-        result = fmt._deep_truncate(long_s, max_str=500)
+        result = fmt.deep_truncate(long_s, max_str=500)
         assert result.startswith("x" * 500)
         assert "100 chars truncated" in result
         assert len(result) < 600
 
     def test_deep_truncate_list_within_limit(self):
         lst = [1, 2, 3]
-        assert fmt._deep_truncate(lst, max_list=5) == [1, 2, 3]
+        assert fmt.deep_truncate(lst, max_list=5) == [1, 2, 3]
 
     def test_deep_truncate_list_over_limit(self):
         lst = list(range(25))
-        result = fmt._deep_truncate(lst, max_list=20)
+        result = fmt.deep_truncate(lst, max_list=20)
         assert len(result) == 21  # 20 items + sentinel
         assert "5 more items" in result[-1]
 
     def test_deep_truncate_dict_within_limit(self):
         d = {"a": 1, "b": 2}
-        assert fmt._deep_truncate(d, max_dict=5) == {"a": 1, "b": 2}
+        assert fmt.deep_truncate(d, max_dict=5) == {"a": 1, "b": 2}
 
     def test_deep_truncate_dict_over_limit(self):
         d = {str(i): i for i in range(35)}
-        result = fmt._deep_truncate(d, max_dict=30)
+        result = fmt.deep_truncate(d, max_dict=30)
         assert "__more__" in result
         assert "5 fields omitted" in result["__more__"]
 
     def test_deep_truncate_nested(self):
         data = {"logs": ["a" * 600] * 25}
-        result = fmt._deep_truncate(data, max_str=500, max_list=20)
+        result = fmt.deep_truncate(data, max_str=500, max_list=20)
         assert len(result["logs"]) == 21
         assert "100 chars truncated" in result["logs"][0]
 
-    def test_to_toon_is_compact_json(self):
-        data = {"key": "value"}
-        result = fmt.to_toon(data)
-        assert "\n" not in result
-        parsed = json.loads(result)
-        assert parsed["key"] == "value"
+    # ── to_toon tests (real TOON format) ─────────────────────────────
 
-    def test_to_toon_truncates_long_string(self):
-        data = {"msg": "z" * 1000}
-        result = fmt.to_toon(data)
-        parsed = json.loads(result)
-        assert len(parsed["msg"]) < 1000
-        assert "chars truncated" in parsed["msg"]
+    def test_to_toon_simple_object(self):
+        result = fmt.to_toon({"name": "Alice", "age": 30})
+        assert "name: Alice" in result
+        assert "age: 30" in result
 
-    def test_to_toon_truncates_long_list(self):
-        data = {"items": list(range(50))}
+    def test_to_toon_bool_and_null(self):
+        result = fmt.to_toon({"active": True, "deleted": False, "note": None})
+        assert "active: true" in result
+        assert "deleted: false" in result
+        assert "note: null" in result
+
+    def test_to_toon_inline_primitive_array(self):
+        result = fmt.to_toon({"tags": ["admin", "ops", "dev"]})
+        assert "[3]" in result
+        assert "admin" in result
+        assert "ops" in result
+
+    def test_to_toon_tabular_array(self):
+        data = {"records": [
+            {"_sourceCategory": "prod/app", "_count": "42"},
+            {"_sourceCategory": "prod/db", "_count": "10"},
+        ]}
         result = fmt.to_toon(data)
-        parsed = json.loads(result)
-        assert len(parsed["items"]) == 21  # 20 + sentinel
-        assert "more items" in parsed["items"][-1]
+        # Header declared once, not repeated per row
+        assert "{_sourceCategory,_count}" in result
+        assert "prod/app" in result
+        assert "prod/db" in result
+        # Keys should NOT be repeated on data rows
+        lines = result.splitlines()
+        data_rows = [l for l in lines if "prod/" in l]
+        for row in data_rows:
+            assert "_sourceCategory" not in row  # key not repeated in data rows
+
+    def test_to_toon_nested_object(self):
+        data = {"job_id": "ABC", "status": {"state": "DONE", "count": 5}}
+        result = fmt.to_toon(data)
+        assert "job_id: ABC" in result
+        assert "state: DONE" in result
+        assert "count: 5" in result
+
+    def test_to_toon_string_quoting(self):
+        # Strings that look like booleans/null must be quoted
+        result = fmt.to_toon({"flag": "true", "val": "null"})
+        assert '"true"' in result
+        assert '"null"' in result
+
+    def test_to_toon_empty_array(self):
+        result = fmt.to_toon({"items": []})
+        assert "[0]" in result
+
+    def test_to_toon_non_uniform_array(self):
+        # Mixed types fall back to list-marker format
+        result = fmt.to_toon({"items": [1, {"a": 2}, "text"]})
+        assert "- " in result
 
 
 # ── timeutil.py tests ─────────────────────────────────────────────────

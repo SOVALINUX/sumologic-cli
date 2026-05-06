@@ -81,7 +81,7 @@ cli-anything-sumologic <command-group> <command> [OPTIONS]
 | `--help` | Show help for any command |
 
 **Formats:**
-- `toon` *(default)* — compact JSON with automatic truncation. Strings longer than 500 chars, lists with more than 20 items, and objects with more than 30 fields are all trimmed with a marker showing how much was cut. Optimised for AI agent consumption.
+- `toon` *(default)* — Token-Oriented Object Notation. YAML-like key-value pairs for objects, tabular CSV rows for uniform arrays (keys declared once per array, not per row). Strings/lists/dicts are truncated at configurable limits before encoding. Optimised for AI agent consumption.
 - `json` — full indented JSON, no truncation.
 - `text` — human-readable formatted tables. Always used in the interactive REPL.
 
@@ -199,15 +199,37 @@ cli-anything-sumologic --format text search run "error" --from -1h
 
 ### TOON output (default)
 
-TOON applies recursive truncation before serialising to compact JSON:
-- Strings longer than **500 chars** → `"first 500 chars... [N chars truncated]"`
-- Lists with more than **20 items** → first 20 items + `"[N more items]"` sentinel
-- Dicts with more than **30 fields** → first 30 fields + `"__more__": "N fields omitted"`
+TOON (Token-Oriented Object Notation) is a compact, human-readable format designed to minimise LLM token consumption. See [toonformat.dev](https://toonformat.dev) for the full spec.
 
-Example output for a message query:
-```json
-{"job_id":"3C967AD8DD28BFAB","is_aggregate":false,"message_count":70,"record_count":0,"fields":[...],"messages":[{"_raw":"2026-05-06T15:10:18Z ERROR ... [8400 chars truncated]","_messagetime":"1778080218141"},{"_raw":"..."}]}
+Key syntax:
+- **Objects** use `key: value` pairs with indentation (no `{` `}`)
+- **Uniform arrays** use a tabular header declaring field names once, then one CSV row per item — the big win for log records
+- **Primitive arrays** are inlined: `tags[3]: admin,ops,dev`
+- **Strings** are unquoted unless they contain structural characters or look like booleans/numbers
+
+Example output for an aggregate query:
 ```
+job_id: ABC123
+is_aggregate: true
+record_count: 3
+records[3]{_sourceCategory,_count}:
+  prod/app,842
+  prod/db,310
+  prod/web,95
+```
+
+Notice `_sourceCategory` and `_count` appear only once in the header, not on every row — this is where TOON saves the most tokens vs JSON.
+
+TOON truncation is applied separately before encoding (see below).
+
+### Field truncation (all formats)
+
+Before serialization, large fields are truncated to keep payloads manageable:
+- Strings longer than **500 chars** → `"first 500 chars ...[N chars truncated]"`
+- Lists with more than **20 items** → first 20 items + `"[N more items]"` sentinel
+- Dicts with more than **30 fields** → first 30 keys + `"__more__": "N fields omitted"`
+
+Truncation applies to `--format toon` and `--format json` alike. Pass `--format json` without pre-truncating if you need the full unmodified payload.
 
 ### Full JSON output
 

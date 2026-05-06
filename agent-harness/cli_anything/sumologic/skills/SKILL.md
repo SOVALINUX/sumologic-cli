@@ -45,7 +45,7 @@ Credentials are saved to `~/.cli-anything-sumologic/session.json`.
 # Interactive REPL (default — no subcommand; always text mode)
 cli-anything-sumologic
 
-# One-shot commands — TOON output by default (compact JSON + truncation)
+# One-shot commands — TOON output by default (Token-Oriented Object Notation)
 cli-anything-sumologic <command-group> <command> [OPTIONS]
 
 # Full indented JSON, no truncation
@@ -59,9 +59,11 @@ cli-anything-sumologic --format text <command-group> <command> [OPTIONS]
 
 | `--format` | Description |
 |------------|-------------|
-| `toon` *(default)* | Compact JSON. Strings > 500 chars, lists > 20 items, and dicts > 30 fields are trimmed with a marker showing what was cut. Best for agent consumption. |
-| `json` | Full indented JSON with no truncation. Use when you need the complete payload. |
+| `toon` *(default)* | Token-Oriented Object Notation. YAML-like key-value pairs for objects; tabular CSV rows for uniform arrays (field names declared once, not per row). Field truncation applied before encoding. Best for agent consumption. |
+| `json` | Full indented JSON. No truncation. |
 | `text` | Human-readable tables. Automatically used in the interactive REPL. |
+
+**Field truncation** (applied before TOON or JSON encoding): strings > 500 chars, lists > 20 items, dicts > 30 fields are trimmed with a marker showing what was cut.
 
 `--json` is a hidden alias for `--format json` (backward compatibility).
 
@@ -127,9 +129,20 @@ cli-anything-sumologic search run \
   --from "-1h" --to "now"
 ```
 
-TOON output (compact, truncated):
+TOON output (tabular — field names declared once per array, not per row):
 ```
-{"job_id":"ABC123","is_aggregate":true,"message_count":0,"record_count":10,"fields":[...],"records":[{"_sourceCategory":"prod/app","_count":"842"},{"_sourceCategory":"prod/db","_count":"310"},...]}}
+job_id: ABC123
+is_aggregate: true
+message_count: 0
+record_count: 10
+fields[2]{name,fieldType}:
+  _sourceCategory,string
+  _count,long
+records[10]{_sourceCategory,_count}:
+  prod/app,842
+  prod/db,310
+  prod/web,95
+  ...
 ```
 
 Full JSON when you need it:
