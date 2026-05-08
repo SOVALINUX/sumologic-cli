@@ -7,9 +7,9 @@ from typing import Any
 # ── Field truncation (independent of output format) ───────────────────
 # Applied before serialization to keep payloads manageable.
 
-MAX_STR_LEN = 500
-MAX_LIST_LEN = 20
-MAX_DICT_KEYS = 30
+MAX_STR_LEN = 2000   # _raw log lines are often 1-2 KB; 2000 keeps most intact
+MAX_LIST_LEN = 20    # 20 messages/records is enough context for most agent tasks
+MAX_DICT_KEYS = 30   # objects rarely have more than 30 meaningful fields
 
 
 def _truncate(value: str, max_len: int = 120) -> str:

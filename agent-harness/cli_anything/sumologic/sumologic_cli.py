@@ -36,13 +36,16 @@ def _get_client(session: dict):
     return make_client(endpoint, access_id, access_key)
 
 
-def _out(output_format: str, data, human_text: str):
+def _out(output_format: str, truncate: bool, data, human_text: str):
+    if output_format == "text":
+        click.echo(human_text)
+        return
+    if truncate:
+        data = fmt.deep_truncate(data)
     if output_format == "json":
         click.echo(fmt.to_json(data))
-    elif output_format == "toon":
-        click.echo(fmt.to_toon(data))
     else:
-        click.echo(human_text)
+        click.echo(fmt.to_toon(data))
 
 
 # ── Root group ────────────────────────────────────────────────────────
@@ -52,11 +55,14 @@ def _out(output_format: str, data, human_text: str):
 @click.option("--format", "output_format",
               type=click.Choice(["text", "json", "toon"], case_sensitive=False),
               default="toon", show_default=True,
-              help="Output format. toon = compact JSON with truncation (token-efficient).")
+              help="Output format. toon = compact, token-efficient notation (default).")
+@click.option("--no-truncation", "no_truncation", is_flag=True, default=False,
+              help="Disable field truncation. By default strings >2000 chars, "
+                   "lists >20 items, and dicts >30 keys are trimmed.")
 @click.option("--json", "force_json", is_flag=True, default=False, hidden=True,
               help="Alias for --format=json (backward compat).")
 @click.pass_context
-def cli(ctx: click.Context, output_format: str, force_json: bool):
+def cli(ctx: click.Context, output_format: str, no_truncation: bool, force_json: bool):
     """cli-anything-sumologic — Sumo Logic log search CLI.
 
     Run without subcommands to enter the interactive REPL.
@@ -66,6 +72,7 @@ def cli(ctx: click.Context, output_format: str, force_json: bool):
     if force_json:
         output_format = "json"
     ctx.obj["output_format"] = output_format
+    ctx.obj["truncate"] = not no_truncation
     ctx.obj["session"] = sess_mod.load_session()
 
     if ctx.invoked_subcommand is None:
@@ -101,7 +108,8 @@ def auth_configure(ctx: click.Context, endpoint: str, access_id: str,
     _save(ctx, session)
 
     output_format = ctx.obj.get("output_format", "toon")
-    _out(output_format, {"status": "ok", "endpoint": endpoint}, "")
+    truncate = ctx.obj.get("truncate", True)
+    _out(output_format, truncate,{"status": "ok", "endpoint": endpoint}, "")
     if output_format == "text":
         _skin.success("Credentials saved.")
         _skin.info(f"Endpoint: {endpoint}")
@@ -114,11 +122,12 @@ def auth_status(ctx: click.Context):
     session = _load_session(ctx)
     info = sess_mod.get_session_info(session)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     if output_format == "text":
         for k, v in info.items():
             _skin.status(k, str(v))
     else:
-        _out(output_format, info, "")
+        _out(output_format, truncate,info, "")
 
 
 @auth.command("test")
@@ -127,6 +136,7 @@ def auth_test(ctx: click.Context):
     """Test credentials by making a minimal API call."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     try:
         sess_mod.validate_credentials(session)
         client = _get_client(session)
@@ -136,11 +146,11 @@ def auth_test(ctx: click.Context):
             timezone=session.get("timezone", "UTC"),
         )
         search_mod.delete_job(client, job_id)
-        _out(output_format, {"status": "ok"}, "")
+        _out(output_format, truncate,{"status": "ok"}, "")
         if output_format == "text":
             _skin.success("Credentials are valid.")
     except Exception as e:
-        _out(output_format, {"status": "error", "message": str(e)}, "")
+        _out(output_format, truncate,{"status": "error", "message": str(e)}, "")
         if output_format == "text":
             _skin.error(str(e))
         sys.exit(1)
@@ -179,6 +189,7 @@ def search_run(ctx: click.Context, query: str, from_time: str, to_time: str,
     """
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     tz = timezone or session.get("timezone", "UTC")
     from_iso = parse_time(from_time)
     to_iso = parse_time(to_time)
@@ -193,7 +204,7 @@ def search_run(ctx: click.Context, query: str, from_time: str, to_time: str,
             "limit": limit,
             "timeout": timeout,
         }
-        _out(output_format, params, fmt.to_json(params))
+        _out(output_format, truncate,params, fmt.to_json(params))
         return
 
     try:
@@ -214,7 +225,7 @@ def search_run(ctx: click.Context, query: str, from_time: str, to_time: str,
             max_results=limit,
         )
     except Exception as e:
-        _out(output_format, {"error": str(e)}, "")
+        _out(output_format, truncate,{"error": str(e)}, "")
         if output_format == "text":
             _skin.error(str(e))
         sys.exit(1)
@@ -236,7 +247,7 @@ def search_run(ctx: click.Context, query: str, from_time: str, to_time: str,
             output["records"] = [fmt.record_to_dict(r) for r in result["records"]]
         else:
             output["messages"] = [fmt.message_to_dict(m) for m in result["messages"]]
-        _out(output_format, output, "")
+        _out(output_format, truncate,output, "")
     else:
         status = result["status"]
         if result["is_aggregate"]:
@@ -259,9 +270,10 @@ def search_history(ctx: click.Context, limit: int):
     """Show recent query history."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     history = session.get("query_history", [])[-limit:]
     if output_format != "text":
-        _out(output_format, {"history": history}, "")
+        _out(output_format, truncate,{"history": history}, "")
     else:
         if not history:
             _skin.info("No query history.")
@@ -281,9 +293,10 @@ def search_saved(ctx: click.Context):
     """List saved queries."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     saved = session.get("saved_queries", {})
     if output_format != "text":
-        _out(output_format, {"saved_queries": saved}, "")
+        _out(output_format, truncate,{"saved_queries": saved}, "")
     else:
         if not saved:
             _skin.info("No saved queries.")
@@ -308,9 +321,10 @@ def search_save(ctx: click.Context, name: str, query: str,
     """Save a named query for reuse."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     sess_mod.save_query(session, name, query, {"from": parse_time(from_time), "to": parse_time(to_time)})
     _save(ctx, session)
-    _out(output_format, {"status": "ok", "name": name}, f"Saved query '{name}'.")
+    _out(output_format, truncate,{"status": "ok", "name": name}, f"Saved query '{name}'.")
     if output_format == "text":
         _skin.success(f"Saved query '{name}'.")
 
@@ -322,15 +336,16 @@ def search_delete_saved(ctx: click.Context, name: str):
     """Delete a saved query by name."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     removed = sess_mod.delete_saved_query(session, name)
     _save(ctx, session)
     if removed:
-        _out(output_format, {"status": "ok", "name": name}, "")
+        _out(output_format, truncate,{"status": "ok", "name": name}, "")
         if output_format == "text":
             _skin.success(f"Deleted saved query '{name}'.")
     else:
         msg = f"No saved query named '{name}'."
-        _out(output_format, {"status": "not_found", "name": name}, "")
+        _out(output_format, truncate,{"status": "not_found", "name": name}, "")
         if output_format == "text":
             _skin.warning(msg)
 
@@ -344,10 +359,11 @@ def search_replay(ctx: click.Context, name: str, limit: int, timeout: float):
     """Run a previously saved query by name."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     saved = session.get("saved_queries", {})
     if name not in saved:
         msg = f"No saved query named '{name}'. Run 'search saved' to list them."
-        _out(output_format, {"error": msg}, "")
+        _out(output_format, truncate,{"error": msg}, "")
         if output_format == "text":
             _skin.error(msg)
         sys.exit(1)
@@ -381,10 +397,11 @@ def job_status(ctx: click.Context, job_id: str):
     """Get status of a search job by ID."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     try:
         client = _get_client(session)
         status = client.get_status(job_id)
-        _out(output_format, status, fmt.format_status(status))
+        _out(output_format, truncate,status, fmt.format_status(status))
     except Exception as e:
         _skin.error(str(e))
         sys.exit(1)
@@ -399,10 +416,11 @@ def job_messages(ctx: click.Context, job_id: str, limit: int, offset: int):
     """Fetch messages from a completed search job."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     try:
         client = _get_client(session)
         result = client.get_messages(job_id, limit=limit, offset=offset)
-        _out(output_format, result,
+        _out(output_format, truncate,result,
              fmt.format_messages_table(result.get("fields", []), result.get("messages", [])))
     except Exception as e:
         _skin.error(str(e))
@@ -418,10 +436,11 @@ def job_records(ctx: click.Context, job_id: str, limit: int, offset: int):
     """Fetch aggregate records from a completed search job."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     try:
         client = _get_client(session)
         result = client.get_records(job_id, limit=limit, offset=offset)
-        _out(output_format, result,
+        _out(output_format, truncate,result,
              fmt.format_records_table(result.get("fields", []), result.get("records", [])))
     except Exception as e:
         _skin.error(str(e))
@@ -435,10 +454,11 @@ def job_delete(ctx: click.Context, job_id: str):
     """Cancel and delete a search job."""
     session = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     try:
         client = _get_client(session)
         search_mod.delete_job(client, job_id)
-        _out(output_format, {"status": "ok", "job_id": job_id}, "")
+        _out(output_format, truncate,{"status": "ok", "job_id": job_id}, "")
         if output_format == "text":
             _skin.success(f"Deleted job {job_id}.")
     except Exception as e:
@@ -461,12 +481,13 @@ def session_info(ctx: click.Context):
     """Display current session info."""
     s = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     info = sess_mod.get_session_info(s)
     if output_format == "text":
         for k, v in info.items():
             _skin.status(k, str(v))
     else:
-        _out(output_format, info, "")
+        _out(output_format, truncate,info, "")
 
 
 @session.command("clear-history")
@@ -475,9 +496,10 @@ def session_clear_history(ctx: click.Context):
     """Clear query history."""
     s = _load_session(ctx)
     output_format = ctx.obj.get("output_format", "toon")
+    truncate = ctx.obj.get("truncate", True)
     s["query_history"] = []
     _save(ctx, s)
-    _out(output_format, {"status": "ok"}, "")
+    _out(output_format, truncate,{"status": "ok"}, "")
     if output_format == "text":
         _skin.success("Query history cleared.")
 
