@@ -1,15 +1,22 @@
 """Output formatting for Sumo Logic search results."""
 
 import json
+import os
 import re
 from typing import Any
 
 # ── Field truncation (independent of output format) ───────────────────
 # Applied before serialization to keep payloads manageable.
+# All three limits can be overridden via environment variables.
 
-MAX_STR_LEN = 2000   # _raw log lines are often 1-2 KB; 2000 keeps most intact
-MAX_LIST_LEN = 20    # 20 messages/records is enough context for most agent tasks
-MAX_DICT_KEYS = 30   # objects rarely have more than 30 meaningful fields
+MAX_STR_LEN = int(os.environ.get("SUMO_TRUNCATE_STR", 2000))
+# SUMO_TRUNCATE_STR  — max string length in chars before truncation (default 2000)
+
+MAX_LIST_LEN = int(os.environ.get("SUMO_TRUNCATE_LIST", 20))
+# SUMO_TRUNCATE_LIST — max items kept from any list (default 20)
+
+MAX_DICT_KEYS = int(os.environ.get("SUMO_TRUNCATE_DICT", 30))
+# SUMO_TRUNCATE_DICT — max keys kept from any dict (default 30)
 
 
 def _truncate(value: str, max_len: int = 120) -> str:

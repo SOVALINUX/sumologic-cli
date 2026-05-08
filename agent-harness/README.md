@@ -97,8 +97,18 @@ cli-anything-sumologic auth test
 | `--format toon` | Same as default |
 | `--format json` | Full indented JSON |
 | `--format text` | Human-readable tables (always used inside the REPL) |
+| `--no-truncation` | Disable field truncation entirely |
 
-TOON uses YAML-like key-value pairs for objects and tabular CSV rows for uniform arrays (field names declared once per array). Field truncation is applied before encoding: strings > 500 chars, lists > 20 items, dicts > 30 fields.  
+TOON uses YAML-like key-value pairs for objects and tabular CSV rows for uniform arrays (field names declared once per array). Field truncation is applied before encoding to both `toon` and `json` formats.
+
+**Default truncation limits** (overridable via env vars):
+
+| Env var | Default | Controls |
+|---------|---------|----------|
+| `SUMO_TRUNCATE_STR` | `2000` | Max string length in chars |
+| `SUMO_TRUNCATE_LIST` | `20` | Max items kept from any list |
+| `SUMO_TRUNCATE_DICT` | `30` | Max keys kept from any dict |
+
 `--json` is a hidden alias for `--format json` kept for backward compatibility.
 
 ## Agent Usage (TOON mode — default)

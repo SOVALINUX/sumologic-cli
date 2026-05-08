@@ -81,9 +81,13 @@ cli-anything-sumologic <command-group> <command> [OPTIONS]
 | `--help` | Show help for any command |
 
 **Formats:**
-- `toon` *(default)* — Token-Oriented Object Notation. YAML-like key-value pairs for objects, tabular CSV rows for uniform arrays (keys declared once per array, not per row). Strings/lists/dicts are truncated at configurable limits before encoding. Optimised for AI agent consumption.
-- `json` — full indented JSON, no truncation.
+- `toon` *(default)* — Token-Oriented Object Notation. YAML-like key-value pairs for objects, tabular CSV rows for uniform arrays (keys declared once per array, not per row). Field truncation applied before encoding. Optimised for AI agent consumption.
+- `json` — full indented JSON. Field truncation still applied unless `--no-truncation` is set.
 - `text` — human-readable formatted tables. Always used in the interactive REPL.
+
+| Flag | Description |
+|------|-------------|
+| `--no-truncation` | Disable field truncation entirely. Returns the full payload. |
 
 `--json` is kept as a hidden alias for `--format json` for backward compatibility.
 
@@ -222,14 +226,31 @@ Notice `_sourceCategory` and `_count` appear only once in the header, not on eve
 
 TOON truncation is applied separately before encoding (see below).
 
-### Field truncation (all formats)
+### Field truncation
 
-Before serialization, large fields are truncated to keep payloads manageable:
-- Strings longer than **500 chars** → `"first 500 chars ...[N chars truncated]"`
-- Lists with more than **20 items** → first 20 items + `"[N more items]"` sentinel
-- Dicts with more than **30 fields** → first 30 keys + `"__more__": "N fields omitted"`
+Before serialization, large fields are truncated to keep payloads manageable. Truncation applies to both `toon` and `json` formats.
 
-Truncation applies to `--format toon` and `--format json` alike. Pass `--format json` without pre-truncating if you need the full unmodified payload.
+| What | Default limit | Marker added |
+|------|--------------|--------------|
+| Strings | **2000 chars** | `...[N chars truncated]` appended |
+| Lists | **20 items** | `"[N more items]"` appended as last element |
+| Dicts | **30 keys** | `"__more__": "N fields omitted"` added |
+
+**Disable truncation entirely:**
+
+```bash
+cli-anything-sumologic --no-truncation search run "error" --from -1h
+```
+
+**Override limits via environment variables:**
+
+```bash
+export SUMO_TRUNCATE_STR=5000   # raise string limit to 5000 chars
+export SUMO_TRUNCATE_LIST=50    # keep up to 50 list items
+export SUMO_TRUNCATE_DICT=60    # keep up to 60 dict keys
+```
+
+These can be set per-invocation or in your shell profile / `.env` file. `--no-truncation` takes precedence and ignores the env vars.
 
 ### Full JSON output
 
@@ -280,10 +301,10 @@ cli-anything-sumologic search run \
   --from -3h --limit 50
 ```
 
-### Save full results to a file (untruncated JSON)
+### Save full untruncated results to a file
 
 ```bash
-cli-anything-sumologic --format json search run "error | limit 100" --from -6h \
+cli-anything-sumologic --no-truncation --format json search run "error | limit 100" --from -6h \
   > results.json
 ```
 
@@ -329,6 +350,6 @@ sumologic-cli/
         ├── utils/
         │   └── sumologic_backend.py  # HTTP client
         └── tests/
-            ├── test_core.py      # Unit tests (47 tests)
+            ├── test_core.py      # Unit tests (52 tests)
             └── test_full_e2e.py  # E2E tests (requires credentials)
 ```

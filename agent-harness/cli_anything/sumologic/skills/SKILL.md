@@ -60,10 +60,18 @@ cli-anything-sumologic --format text <command-group> <command> [OPTIONS]
 | `--format` | Description |
 |------------|-------------|
 | `toon` *(default)* | Token-Oriented Object Notation. YAML-like key-value pairs for objects; tabular CSV rows for uniform arrays (field names declared once, not per row). Field truncation applied before encoding. Best for agent consumption. |
-| `json` | Full indented JSON. No truncation. |
+| `json` | Full indented JSON. Field truncation still applied unless `--no-truncation` is set. |
 | `text` | Human-readable tables. Automatically used in the interactive REPL. |
 
-**Field truncation** (applied before TOON or JSON encoding): strings > 500 chars, lists > 20 items, dicts > 30 fields are trimmed with a marker showing what was cut.
+**Field truncation** is applied before both TOON and JSON encoding. Trimmed fields include a marker showing what was cut.
+
+| Limit | Default | Env var to override |
+|-------|---------|---------------------|
+| String length | 2000 chars | `SUMO_TRUNCATE_STR` |
+| List items | 20 | `SUMO_TRUNCATE_LIST` |
+| Dict keys | 30 | `SUMO_TRUNCATE_DICT` |
+
+Disable truncation entirely with `--no-truncation`. See [Log Truncation](#log-truncation) below.
 
 `--json` is a hidden alias for `--format json` (backward compatibility).
 
@@ -188,14 +196,15 @@ cli-anything-sumologic auth test
 
 ## For AI Agents
 
-1. **Default output is TOON** — compact JSON with automatic truncation, no flag needed. Token-efficient for agent consumption.
-2. **Use `--format json`** when you need the complete untruncated payload (e.g. to save to a file or do detailed analysis).
-3. **Check `is_aggregate`** in search results to know whether to read `records` or `messages`.
-4. **`search run` is the primary operation** — it handles the full job lifecycle (create → poll → fetch → delete).
-5. **Use `--dry-run`** to validate query parameters without consuming API quota.
-6. **Use `--save-as`** to save queries while running them.
-7. **Use `search replay`** to re-run saved queries without repeating the query string.
-8. **`auth test` exits non-zero on failure** — use it as a precondition check.
+1. **Default output is TOON** — compact, token-efficient, with field truncation applied automatically. No flag needed.
+2. **Use `--no-truncation`** when you need the complete payload — e.g. to read a full stack trace or long log message.
+3. **Use `--format json --no-truncation`** to get a full, parseable JSON payload with no content cut.
+4. **Check `is_aggregate`** in search results to know whether to read `records` or `messages`.
+5. **`search run` is the primary operation** — it handles the full job lifecycle (create → poll → fetch → delete).
+6. **Use `--dry-run`** to validate query parameters without consuming API quota.
+7. **Use `--save-as`** to save queries while running them.
+8. **Use `search replay`** to re-run saved queries without repeating the query string.
+9. **`auth test` exits non-zero on failure** — use it as a precondition check.
 
 ### Deployment endpoints
 
@@ -209,6 +218,43 @@ cli-anything-sumologic auth test
 | JP | `https://api.jp.sumologic.com/api/v1` |
 | CA | `https://api.ca.sumologic.com/api/v1` |
 | FED | `https://api.fed.sumologic.com/api/v1` |
+
+## Log Truncation
+
+Field truncation is applied by default to both TOON and JSON output to keep payloads token-efficient. It is **not** applied to `--format text`.
+
+### Defaults
+
+| Field type | Default limit | Truncation marker |
+|------------|--------------|-------------------|
+| Strings | 2000 chars | `...[N chars truncated]` appended to the value |
+| List items | 20 items | `"[N more items]"` appended as the last element |
+| Dict keys | 30 keys | `"__more__": "N fields omitted"` added to the object |
+
+### Disable truncation
+
+```bash
+# No truncation at all — full payload
+cli-anything-sumologic --no-truncation search run "error" --from -1h
+
+# Full untruncated JSON saved to file
+cli-anything-sumologic --no-truncation --format json search run "error" --from -1h \
+  > results.json
+```
+
+### Override limits via environment variables
+
+Set these before running the CLI (or export them in your shell profile):
+
+```bash
+export SUMO_TRUNCATE_STR=5000   # raise string limit to 5000 chars
+export SUMO_TRUNCATE_LIST=50    # keep up to 50 list/array items
+export SUMO_TRUNCATE_DICT=60    # keep up to 60 dict keys
+
+cli-anything-sumologic search run "error" --from -1h
+```
+
+`--no-truncation` always takes precedence over env vars.
 
 ## Version
 
