@@ -258,4 +258,4 @@ cli-anything-sumologic search run "error" --from -1h
 
 ## Version
 
-1.1.0
+1.2.0

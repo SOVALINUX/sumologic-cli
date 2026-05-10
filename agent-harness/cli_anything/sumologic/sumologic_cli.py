@@ -15,7 +15,7 @@ from cli_anything.sumologic.core.timeutil import parse_time
 from cli_anything.sumologic.utils.sumologic_backend import make_client
 from cli_anything.sumologic.utils.repl_skin import ReplSkin
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 _skin = ReplSkin("sumologic", version=VERSION)
 
